@@ -1,10 +1,16 @@
 
 
 # source: https://mimic.physionet.org/mimictables/chartevents/
+# https://machinelearningmastery.com/develop-word-embedding-model-predicting-movie-review-sentiment/
+# https://stackoverflow.com/questions/46308374/what-is-validation-data-used-for-in-a-keras-sequential-model
+# https://keras.io/api/models/sequential/
+# https://keras.io/api/layers/core_layers/embedding/
+
 
 import pandas as pd
 import numpy as np
 import os
+import gc
 
 within_n_days = 30
 
@@ -124,7 +130,6 @@ df_subjects_data['merged_text'] = df_subjects_data.SUBJECT_ID.apply(get_merged_t
 df_subjects_data = pd.read_csv(os.path.join('data', 'df_subjects_data_for_urgent_visit_in_30_days_prediction.csv.tar.gz'))
 df_subjects_data = df_subjects_data.rename(columns={'df_subjects_data_for_urgent_visit_in_30_days_prediction.csv': 'SUBJECT_ID'})
 
-import gc
 from datetime import datetime
 import string
 import re
@@ -152,6 +157,9 @@ def clean_text_and_sequence(text, min_sequance_element_length=1):
     words = [w.lower() for w in words]
     if min_sequance_element_length > 1:
         words = [x for x in words if len(x) >= min_sequance_element_length]
+    
+    words = list(set(words))
+    
     return words
 
 
@@ -185,35 +193,95 @@ with open(os.path.join('data', "raw_text_data_30_days.txt"), "rb") as _fp:
 
 
 
-i_sentences = 1
 
 
 sentences = []
-get_sequence_list(raw_text_data[i_sentences*5000:min((i_sentences+1)*5000, len(raw_text_data))], 3)
+get_sequence_list(raw_text_data, 3)
+
+
+
 
 
 # Save sequenced_sentences
 import pickle
-with open(os.path.join('data', 'save', "sequenced_sentences"+"_A_"+".txt"), "wb") as _fp:
+with open(os.path.join('data', 'save', "sequenced_sentences_all.txt"), "wb") as _fp:
     pickle.dump(sentences, _fp)
 
 
 # Load positive_subject_ids and dict_last_admission_hamdid_by_subject_id
-with open(os.path.join('data', 'save', "sequenced_sentences"+str(i_sentences)+".txt"), "rb") as _fp:
-    sentences_temp = pickle.load(_fp)
+with open(os.path.join('data', 'save', "sequenced_sentences_all.txt"), "rb") as _fp:
+    sentences = pickle.load(_fp)
     gc.collect()
 
 
-sentences.extend(sentences_temp)
-
-import gc
-del sentences_temp
-gc.collect()
+# TRAIN WORD2VEC MODEL
 
 
+from gensim.models import Word2Vec
+
+model = Word2Vec(sentences, min_count=3)
+
+print(model)
+
+# access vector for one word
+print(model['nurse'])
+
+model.save(os.path.join('models', 'word2vec_model.bin'))
+
+model = Word2Vec.load(os.path.join('models', 'word2vec_model.bin'))
 
 
 
+# Create X and y
+from keras.preprocessing.text import Tokenizer
+
+tokenizer = Tokenizer(num_words=1000)
+tokenizer.fit_on_texts(sentences)
+sequences = tokenizer.texts_to_sequences(sentences)
+word_index = tokenizer.word_index
+
+# Save encoded_sentences
+import pickle
+with open(os.path.join('data', 'save', "sequences.txt"), "wb") as _fp:
+    pickle.dump(sequences, _fp)
+
+
+# Load encoded_sentences
+with open(os.path.join('data', 'save', "sequences.txt"), "rb") as _fp:
+    sequences = pickle.load(_fp)
+    gc.collect()
+
+
+# Padding
+from keras.preprocessing.sequence import pad_sequences
+
+max_length = max([len(s) for s in sequences])
+X = pad_sequences(sequences, maxlen=max_length, padding='post')
+
+np.save(os.path.join('data', 'save', "X.npy"), X)
+X = np.load(os.path.join('data', 'save', "X.npy"))
+
+
+# Creating X with word embeddings
+unique_words = len(word_index)
+total_words = unique_words + 1
+skipped_words = 0
+embedding_dim = 100
+embedding_matrix = np.zeros((total_words,embedding_dim))
+
+for word, index in tokenizer.word_index.items():
+    try:
+        embedding_vector = model[word]
+    except:
+        skipped_words += 1
+        pass
+    if embedding_vector is not None:
+        embedding_matrix[index] = embedding_vector
+
+
+np.save(os.path.join('data', 'save', "embedding_matrix.npy"), embedding_matrix)
+embedding_matrix = np.load(os.path.join('data', 'save', "embedding_matrix.npy"))
+embedding_matrix.shape
 
 
 
@@ -222,9 +290,11 @@ df_subjects_data['y'] = df_subjects_data.SUBJECT_ID.apply(lambda x: 1 if x in po
 df_subjects_data.y.value_counts()
 # positive_sample_ratio:
 positive_sample_ratio = round(df_subjects_data.y.value_counts()[1]/df_subjects_data.shape[0], 5)
+y = df_subjects_data['y'].to_list()
+y = np.array(y, dtype=np.int32)
 
-
-
+np.save(os.path.join('data', 'save', "y.npy"), y)
+y = np.load(os.path.join('data', 'save', "y.npy"))
 
 
 
