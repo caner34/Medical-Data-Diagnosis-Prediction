@@ -235,10 +235,33 @@ model = Word2Vec.load(os.path.join('models', 'word2vec_model.bin'))
 # Create X and y
 from keras.preprocessing.text import Tokenizer
 
-tokenizer = Tokenizer(num_words=1000)
+tokenizer = Tokenizer(num_words=6000)
 tokenizer.fit_on_texts(sentences)
 sequences = tokenizer.texts_to_sequences(sentences)
 word_index = tokenizer.word_index
+
+from collections import Counter
+
+dict_word = Counter()
+for wlist in sentences:
+    dict_word.update(wlist)
+
+popular_words = [w for i,(w,c) in enumerate(dict_word.most_common(6000)) if len(w) > 3 and i > 60]
+
+# Save encoded_sentences
+import pickle
+with open(os.path.join('data', 'save', "popular_words.txt"), "wb") as _fp:
+    pickle.dump(popular_words, _fp)
+
+
+# Load encoded_sentences
+with open(os.path.join('data', 'save', "popular_words.txt"), "rb") as _fp:
+    popular_words = pickle.load(_fp)
+    gc.collect()
+
+
+sentences = [[w for w in s if w in popular_words] for s in sentences]
+
 
 # Save encoded_sentences
 import pickle
