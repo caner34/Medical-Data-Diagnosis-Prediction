@@ -235,7 +235,7 @@ model = Word2Vec.load(os.path.join('models', 'word2vec_model.bin'))
 # Create X and y
 from keras.preprocessing.text import Tokenizer
 
-tokenizer = Tokenizer(num_words=6000)
+tokenizer = Tokenizer(num_words=500)
 tokenizer.fit_on_texts(sentences)
 sequences = tokenizer.texts_to_sequences(sentences)
 word_index = tokenizer.word_index
@@ -260,7 +260,7 @@ with open(os.path.join('data', 'save', "popular_words.txt"), "rb") as _fp:
     gc.collect()
 
 
-sentences = [[w for w in s if w in popular_words] for s in sentences]
+sentences = [[w for w in s if w in popular_words[:500]] for s in sentences]
 
 
 # Save encoded_sentences
@@ -295,11 +295,10 @@ embedding_matrix = np.zeros((total_words,embedding_dim))
 for word, index in tokenizer.word_index.items():
     try:
         embedding_vector = model[word]
+        embedding_matrix[index] = embedding_vector
     except:
         skipped_words += 1
         pass
-    if embedding_vector is not None:
-        embedding_matrix[index] = embedding_vector
 
 
 np.save(os.path.join('data', 'save', "embedding_matrix.npy"), embedding_matrix)
